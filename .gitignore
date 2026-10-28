@@ -1,0 +1,11 @@
+# Secrets
+.env
+credentials/*.json
+
+# Runtime output
+audit*.jsonl
+
+# Python
+.venv/
+__pycache__/
+*.pyc
