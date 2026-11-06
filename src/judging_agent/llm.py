@@ -1,7 +1,8 @@
 """
 llm.py — IBM watsonx.ai client factory and a JSON chat helper.
 
-Both agents (Worker, Guardian) get their ModelInference from here.
+Both agents get their models from here: a ModelInference for the Guardian,
+a LangChain ChatWatsonx for the LangGraph worker.
 Credentials and model IDs come from config.settings().
 """
 
@@ -40,12 +41,25 @@ def make_model(model_id: str) -> ModelInference:
     return ModelInference(model_id=model_id, api_client=get_api_client(), project_id=project_id)
 
 
-def worker_model() -> ModelInference:
-    return make_model(settings().worker_model_id)
-
-
 def guardian_model() -> ModelInference:
     return make_model(settings().guardian_model_id)
+
+
+# The model's default output limit (1024 tokens) can cut long final answers short.
+WORKER_MAX_TOKENS = 4096
+
+
+def worker_chat_model():
+    """The worker model as a LangChain chat model (for the LangGraph worker), on the shared client."""
+    from langchain_ibm import ChatWatsonx
+
+    s = settings()
+    return ChatWatsonx(
+        model_id=s.worker_model_id,
+        project_id=s.watsonx_project_id,
+        watsonx_client=get_api_client(),
+        max_tokens=WORKER_MAX_TOKENS,
+    )
 
 
 _FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```$")

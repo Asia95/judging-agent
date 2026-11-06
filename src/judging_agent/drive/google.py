@@ -13,7 +13,7 @@ only); other files are downloaded and converted by drive.extract.
 import io
 
 from judging_agent.config import CREDENTIALS_DIR
-from judging_agent.drive.base import FOLDER_MIME, GOOGLE_DOC_MIME, GOOGLE_SHEET_MIME, TEXT_MIME
+from judging_agent.drive.base import FOLDER_MIME, GOOGLE_DOC_MIME, GOOGLE_SHEET_MIME, TEXT_MIME, ResourceMeta
 from judging_agent.drive.extract import extract_text
 
 CREDENTIALS_PATH = CREDENTIALS_DIR / "credentials.json"
@@ -31,6 +31,7 @@ class GoogleDrive:
     def __init__(self):
         self._service = None
         self._folder_cache: dict[str, dict] = {}  # folder id -> {name, parents}
+        self._user_email: str | None = None
 
     def _svc(self):
         if self._service is None:
@@ -54,13 +55,22 @@ class GoogleDrive:
         return self._service
 
     def list_folder(self, folder_id: str, max_results: int = 50) -> list[dict]:
+        """Children of a folder, following pages until max_results (the API allows 1000 per page)."""
         safe_id = folder_id.replace("\\", "\\\\").replace("'", "\\'")
-        resp = self._svc().files().list(
-            q=f"'{safe_id}' in parents and trashed=false",
-            pageSize=max_results,
-            fields="files(id, name, mimeType)",
-        ).execute()
-        return resp.get("files", [])
+        files: list[dict] = []
+        page_token = None
+        while len(files) < max_results:
+            resp = self._svc().files().list(
+                q=f"'{safe_id}' in parents and trashed=false",
+                pageSize=min(max_results - len(files), 1000),
+                pageToken=page_token,
+                fields="nextPageToken, files(id, name, mimeType)",
+            ).execute()
+            files.extend(resp.get("files", []))
+            page_token = resp.get("nextPageToken")
+            if not page_token:
+                break
+        return files[:max_results]
 
     def read_file(self, file_id: str) -> dict:
         from googleapiclient.http import MediaIoBaseDownload
@@ -106,7 +116,7 @@ class GoogleDrive:
         ).execute()
         return {"id": created["id"], "name": created["name"], "created": True}
 
-    def get_metadata(self, resource_id: str) -> dict | None:
+    def get_metadata(self, resource_id: str) -> ResourceMeta | None:
         from googleapiclient.errors import HttpError
 
         try:
@@ -117,31 +127,51 @@ class GoogleDrive:
         except HttpError:
             return None
         owners = meta.get("owners") or [{}]
-        return {
-            "id": meta["id"],
-            "name": meta["name"],
-            "path": self._path(meta.get("parents") or []) + "/" + meta["name"],
-            "owner": owners[0].get("emailAddress", "unknown"),
-            "mimeType": meta.get("mimeType", ""),
-            "is_folder": meta.get("mimeType") == FOLDER_MIME,
-        }
+        path, ancestors = self._ancestry(meta.get("parents") or [])
+        return ResourceMeta(
+            id=meta["id"],
+            name=meta["name"],
+            path=path + "/" + meta["name"],
+            owner=owners[0].get("emailAddress", "unknown"),
+            mime_type=meta.get("mimeType", ""),
+            is_folder=meta.get("mimeType") == FOLDER_MIME,
+            ancestors=tuple(ancestors),
+        )
 
-    def _path(self, parents: list[str]) -> str:
-        """Build '/A/B' for the first parent chain (cached; capped to avoid cycles)."""
-        names = []
+    def user_email(self) -> str:
+        if self._user_email is None:
+            about = self._svc().about().get(fields="user(emailAddress)").execute()
+            self._user_email = about.get("user", {}).get("emailAddress", "unknown")
+        return self._user_email
+
+    def _ancestry(self, parents: list[str]) -> tuple[str, list[str]]:
+        """Return ('/A/B', [ancestor folder IDs, nearest first]) for the first parent chain.
+
+        The "My Drive" root is in the IDs but not in the path. A parent folder the
+        user can't see (common for files shared with them) ends the chain, and the
+        path starts with "/(hidden)". Cached; capped to avoid cycles.
+        """
+        from googleapiclient.errors import HttpError
+
+        names, ids = [], []
         current = parents[0] if parents else None
         for _ in range(20):
             if current is None:
                 break
             if current not in self._folder_cache:
-                f = self._svc().files().get(fileId=current, fields="name,parents").execute()
+                try:
+                    f = self._svc().files().get(fileId=current, fields="name,parents").execute()
+                except HttpError:
+                    names.append("(hidden)")
+                    break
                 self._folder_cache[current] = f
             folder = self._folder_cache[current]
-            if not folder.get("parents"):  # "My Drive" root — don't include it
+            ids.append(current)
+            if not folder.get("parents"):  # "My Drive" root — not part of the path
                 break
             names.append(folder["name"])
             current = folder["parents"][0]
-        return "/" + "/".join(reversed(names)) if names else ""
+        return ("/" + "/".join(reversed(names)) if names else ""), ids
 
 
 if __name__ == "__main__":

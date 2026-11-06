@@ -16,6 +16,9 @@ dependencies = [
     "pypdf>=4.0.0",
     "python-docx>=1.1.0",
     "openpyxl>=3.1.0",
+    "langgraph>=1.2",           # the worker agent
+    "langchain-core>=1.7",
+    "langchain-ibm>=1.1",       # ChatWatsonx for LangGraph
 ]
 
 [project.optional-dependencies]

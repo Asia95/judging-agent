@@ -4,7 +4,7 @@ drive/fake.py — an in-memory Drive for scenarios and tests (no credentials).
 
 from dataclasses import dataclass, field
 
-from judging_agent.drive.base import FOLDER_MIME, TEXT_MIME
+from judging_agent.drive.base import FOLDER_MIME, TEXT_MIME, ResourceMeta
 
 
 @dataclass
@@ -22,6 +22,7 @@ class FakeDrive:
     """DriveBackend over a dict of {id: FakeNode}. Tracks writes for assertions."""
     nodes: dict[str, FakeNode]
     writes: list[tuple[str, str]] = field(default_factory=list)
+    user: str = "owner@company.com"     # the account the agent acts for
 
     def _node(self, resource_id: str) -> FakeNode:
         if resource_id not in self.nodes:
@@ -49,24 +50,30 @@ class FakeDrive:
     def create_file(self, folder_id: str, name: str, content: str) -> dict:
         self._node(folder_id)
         file_id = f"file-created-{len(self.nodes)}-".ljust(28, "0")
-        self.nodes[file_id] = FakeNode(name, folder_id, content=content)
+        self.nodes[file_id] = FakeNode(name, folder_id, content=content, owner=self.user)
         self.writes.append((file_id, content))
         return {"id": file_id, "name": name, "created": True}
 
-    def get_metadata(self, resource_id: str) -> dict | None:
+    def user_email(self) -> str:
+        return self.user
+
+    def get_metadata(self, resource_id: str) -> ResourceMeta | None:
         node = self.nodes.get(resource_id)
         if node is None:
             return None
         # Like Google Drive, the root folder ("My Drive") is not part of the path.
-        names, current = [node.name], node.parent
-        while current is not None and self.nodes[current].parent is not None:
-            names.append(self.nodes[current].name)
+        names, ancestors, current = [node.name], [], node.parent
+        while current is not None:
+            ancestors.append(current)
+            if self.nodes[current].parent is not None:
+                names.append(self.nodes[current].name)
             current = self.nodes[current].parent
-        return {
-            "id": resource_id,
-            "name": node.name,
-            "path": "/" + "/".join(reversed(names)),
-            "owner": node.owner,
-            "mimeType": FOLDER_MIME if node.is_folder else node.mime,
-            "is_folder": node.is_folder,
-        }
+        return ResourceMeta(
+            id=resource_id,
+            name=node.name,
+            path="/" + "/".join(reversed(names)),
+            owner=node.owner,
+            mime_type=FOLDER_MIME if node.is_folder else node.mime,
+            is_folder=node.is_folder,
+            ancestors=tuple(ancestors),
+        )

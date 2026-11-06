@@ -13,6 +13,7 @@ Optional (defaults shown in Settings):
     WORKER_MODEL_ID      — model for the Worker agent
     GUARDIAN_MODEL_ID    — model for the Guardian (scope derivation + judging)
     AUDIT_LOG_PATH       — audit log for apps/run_task.py
+    WORKSPACE_FOLDER_ID  — if set, the agent can only touch this folder and what is inside it
 """
 
 import os
@@ -25,7 +26,8 @@ CREDENTIALS_DIR = PROJECT_ROOT / "credentials"
 RUNS_DIR = PROJECT_ROOT / "runs"            # audit logs and eval results (gitignored)
 
 DEFAULT_WORKER_MODEL = "openai/gpt-oss-120b"
-DEFAULT_GUARDIAN_MODEL = "ibm/granite-4-h-small"
+# Llama 3.3 70B scored better than ibm/granite-4-h-small on every eval so far (see README).
+DEFAULT_GUARDIAN_MODEL = "meta-llama/llama-3-3-70b-instruct"
 
 
 @dataclass(frozen=True)
@@ -36,6 +38,7 @@ class Settings:
     worker_model_id: str
     guardian_model_id: str
     audit_path: Path
+    workspace_folder_id: str | None
 
 
 @lru_cache(maxsize=1)
@@ -50,4 +53,5 @@ def settings() -> Settings:
         worker_model_id=os.environ.get("WORKER_MODEL_ID", DEFAULT_WORKER_MODEL),
         guardian_model_id=os.environ.get("GUARDIAN_MODEL_ID", DEFAULT_GUARDIAN_MODEL),
         audit_path=Path(os.environ.get("AUDIT_LOG_PATH", RUNS_DIR / "audit.jsonl")),
+        workspace_folder_id=os.environ.get("WORKSPACE_FOLDER_ID") or None,
     )

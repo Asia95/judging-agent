@@ -18,7 +18,7 @@ from judging_agent.config import settings
 from judging_agent.drive import GoogleDrive
 from judging_agent.guardian import LLMJudge, ToolGateway, console_escalation, derive_scope
 from judging_agent.llm import guardian_model
-from judging_agent.worker import Worker
+from judging_agent.worker import GraphWorker
 
 # ── Define the task ───────────────────────────────────────────────────────────
 # This is the only source of truth for what the worker is allowed to do.
@@ -53,8 +53,11 @@ def main():
         judge=LLMJudge(guardian_llm),
         escalate=console_escalation,
         audit_path=audit_path,
+        workspace_root=settings().workspace_folder_id,
     )
-    Worker(task=TASK, gateway=gateway).run()
+    # The LangGraph worker. console_escalation answers right away, so the graph never
+    # has to pause; a UI would use pending_escalation and GraphWorker.start()/resume().
+    GraphWorker(gateway).run(TASK)
 
     print("\n" + "=" * 60)
     print("  SESSION LOG")

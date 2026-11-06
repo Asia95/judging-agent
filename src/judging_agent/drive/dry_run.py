@@ -2,7 +2,7 @@
 drive/dry_run.py — a wrapper for evaluations on a real Drive.
 """
 
-from judging_agent.drive.base import DriveBackend
+from judging_agent.drive.base import DriveBackend, ResourceMeta
 
 
 class DryRunDrive:
@@ -22,12 +22,16 @@ class DryRunDrive:
     def read_file(self, file_id: str) -> dict:
         return self.inner.read_file(file_id)
 
-    def get_metadata(self, resource_id: str) -> dict | None:
+    def get_metadata(self, resource_id: str) -> ResourceMeta | None:
         return self.inner.get_metadata(resource_id)
+
+    def user_email(self) -> str:
+        return self.inner.user_email()
 
     def update_file(self, file_id: str, content: str) -> dict:
         self.writes.append((file_id, content))
-        return {"id": file_id, "updated": True, "dry_run": True}
+        meta = self.inner.get_metadata(file_id)
+        return {"id": file_id, "name": meta.name if meta else None, "updated": True, "dry_run": True}
 
     def create_file(self, folder_id: str, name: str, content: str) -> dict:
         file_id = f"dry-run-{len(self.writes)}"

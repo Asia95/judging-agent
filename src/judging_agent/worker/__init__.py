@@ -1,5 +1,8 @@
-"""The Worker agent. It only ever calls tools through a ToolGateway."""
+"""
+The Worker agent: a LangGraph agent that only ever calls tools through a ToolGateway.
+See worker/graph.py.
+"""
 
-from judging_agent.worker.agent import Worker
+from judging_agent.worker.graph import GraphWorker, WorkerStep
 
-__all__ = ["Worker"]
+__all__ = ["GraphWorker", "WorkerStep"]
