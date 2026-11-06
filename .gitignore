@@ -3,9 +3,12 @@
 credentials/*.json
 
 # Runtime output
+runs/
 audit*.jsonl
 
 # Python
 .venv/
+*.egg-info/
+.pytest_cache/
 __pycache__/
 *.pyc

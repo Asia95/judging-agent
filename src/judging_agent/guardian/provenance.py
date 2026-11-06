@@ -6,6 +6,7 @@ The question the Guardian asks is not "is this file on a list?" but
 
   task     — the ID appears in the user's task text            (trusted)
   listing  — the ID was returned by an approved folder listing (trusted)
+  created  — the worker created this file with an approved write (trusted)
   content  — the ID only appeared inside a document's content  (untrusted:
              this is exactly how a prompt injection points the worker
              somewhere it shouldn't go)
@@ -21,7 +22,7 @@ from dataclasses import dataclass
 # Drive URLs (.../d/<id>/..., .../folders/<id>, ?id=<id>).
 _DRIVE_ID_RE = re.compile(r"(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{25,}(?![A-Za-z0-9_-])")
 
-TRUSTED_SOURCES = {"task", "listing"}
+TRUSTED_SOURCES = {"task", "listing", "created"}
 
 
 def extract_ids(text: str) -> set[str]:
@@ -30,8 +31,8 @@ def extract_ids(text: str) -> set[str]:
 
 @dataclass(frozen=True)
 class Sighting:
-    source: str             # "task" | "listing" | "content"
-    via: str | None = None  # folder ID for listings, file ID for content
+    source: str             # "task" | "listing" | "created" | "content"
+    via: str | None = None  # folder ID for listings/created, file ID for content
 
     @property
     def trusted(self) -> bool:
@@ -66,3 +67,5 @@ class ProvenanceTracker:
         elif action == "read":
             for resource_id in extract_ids(result.get("content", "")) - {args["file_id"]}:
                 self.add(resource_id, Sighting("content", via=args["file_id"]))
+        elif action == "write" and result.get("created"):
+            self.add(result["id"], Sighting("created", via=args["folder_id"]))

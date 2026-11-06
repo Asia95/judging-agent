@@ -1,26 +1,69 @@
 """
-gateway.py — the only path from the worker to a tool.
+guardian/gateway.py — the only path from the worker to a tool.
 
 ToolGateway.execute() checks a call and runs it in one step, so the worker
 never holds the tools or the Drive credentials itself:
 
-  fixed rules → metadata lookup → risk tier → judge → human → execute
-  → record provenance → audit
+  fixed rules → metadata lookup → resource checks → risk tier → judge → human
+  → execute → record provenance → audit
 
-Every call is appended to the audit log as one JSON Lines record.
+assess() is the middle of that pipeline (resource checks, risk tier, judge).
+It is a plain function so evals/judge_golden can run exactly the same steps
+without a Drive.
 """
 
-import json
 import uuid
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Callable
+from pathlib import Path
 
-from judge import LOW, PROMPT_VERSION, Decision, TaskScope, check_rules, risk_tier
-from provenance import ProvenanceTracker
-from tools import TOOLS, DriveBackend
+from judging_agent.config import settings
+from judging_agent.drive.base import DriveBackend
+from judging_agent.guardian import audit
+from judging_agent.guardian.decision import LOW, Decision
+from judging_agent.guardian.escalation import EscalationHandler
+from judging_agent.guardian.provenance import ProvenanceTracker, Sighting
+from judging_agent.guardian.risk import risk_tier
+from judging_agent.guardian.rules import check_resource, check_rules
+from judging_agent.guardian.scope import TaskScope
+from judging_agent.tools import TOOLS
 
-EscalationHandler = Callable[[dict, str], bool]
+
+def assess(
+    tool_name: str,
+    args: dict,
+    metadata: dict,
+    sighting: Sighting,
+    task: str,
+    scope: TaskScope,
+    history: list[dict],
+    judge,
+) -> tuple[Decision, dict | None]:
+    """Resource checks, risk tier and judge for a call that passed check_rules.
+
+    Returns the Guardian's decision (before any human) and the judge context,
+    or None as context if a resource check blocked the call.
+    """
+    spec = TOOLS[tool_name]
+    blocked = check_resource(spec, metadata)
+    if blocked:
+        return blocked, None
+
+    tier, tier_reason = risk_tier(spec.action, metadata, sighting, scope)
+    ctx = {
+        "task": task,
+        "scope": scope,
+        "tool": tool_name,
+        "action": spec.action,
+        "args": args,
+        "metadata": metadata,
+        "sighting": sighting,
+        "tier": tier,
+        "tier_reason": tier_reason,
+        "history": history,
+    }
+    if tier == LOW:
+        return Decision("allow", f"Low risk: {tier_reason}.", "tier", tier), ctx
+    return judge.decide(ctx), ctx
 
 
 @dataclass
@@ -29,6 +72,7 @@ class ToolOutcome:
     args: dict
     decision: Decision
     result: dict
+    resource: str | None = None     # path if known, else the raw ID
 
     @property
     def judged(self) -> str:
@@ -43,7 +87,7 @@ class ToolGateway:
     backend: DriveBackend
     judge: object                       # LLMJudge | StubJudge
     escalate: EscalationHandler
-    audit_path: str = "audit.jsonl"
+    audit_path: str | Path = field(default_factory=lambda: settings().audit_path)
     run_id: str = field(default_factory=lambda: uuid.uuid4().hex[:8])
     verbose: bool = True
 
@@ -66,9 +110,11 @@ class ToolGateway:
         else:
             result = {"error": "blocked by guardian", "reason": decision.reason}
 
-        outcome = ToolOutcome(tool_name, args, decision, result)
+        spec = TOOLS.get(tool_name)
+        resource = ctx["metadata"]["path"] if ctx else str(args.get(spec.resource_arg)) if spec else None
+        outcome = ToolOutcome(tool_name, args, decision, result, resource)
         self.outcomes.append(outcome)
-        self._audit(outcome, ctx)
+        audit.append(self.audit_path, audit.audit_record(self.run_id, self.task, outcome, ctx))
         if self.verbose:
             icon = "✅" if decision.approved else "🚫"
             tier = f", tier {decision.tier}" if decision.tier else ""
@@ -80,7 +126,7 @@ class ToolGateway:
         for i, o in enumerate(self.outcomes, 1):
             status = "✅ ALLOW" if o.decision.approved else "🚫 BLOCK"
             via = " (human)" if o.decision.escalated else ""
-            lines.append(f"[{i}] {status}{via} [{o.decision.layer}] {o.tool}({_short_args(o.args)})")
+            lines.append(f"[{i}] {status}{via} [{o.decision.layer}] {o.tool}({audit.short_args(o.args)})")
             lines.append(f"     Reason: {o.decision.reason}")
         return "\n".join(lines)
 
@@ -100,68 +146,21 @@ class ToolGateway:
         metadata = self.backend.get_metadata(resource_id)
         if metadata is None:
             return Decision("block", f"Resource '{resource_id}' does not exist.", "rule"), None
-        if metadata["is_folder"] != (spec.action == "list"):
-            kind = "a folder" if metadata["is_folder"] else "a file"
-            return Decision("block", f"'{metadata['name']}' is {kind}; wrong tool for it.", "rule"), None
-
-        tier, tier_reason = risk_tier(spec.action, metadata, sighting, self.scope)
-        ctx = {
-            "task": self.task,
-            "scope": self.scope,
-            "tool": tool_name,
-            "action": spec.action,
-            "args": args,
-            "metadata": metadata,
-            "sighting": sighting,
-            "tier": tier,
-            "tier_reason": tier_reason,
-            "history": [
-                {"tool": o.tool, "args": _short_args(o.args), "outcome": o.decision.outcome}
-                for o in self.outcomes
-            ],
-        }
-
-        if tier == LOW:
-            return Decision("allow", f"Low risk: {tier_reason}.", "tier", tier), ctx
-
-        decision = self.judge.decide(ctx)
+        history = [
+            {"tool": o.tool, "resource": o.resource, "outcome": o.decision.outcome}
+            for o in self.outcomes
+        ]
+        decision, ctx = assess(
+            tool_name, args, metadata, sighting, self.task, self.scope, history, self.judge,
+        )
         if decision.outcome == "escalate":
             approved = self.escalate(ctx, decision.reason)
             decision = Decision(
                 "allow" if approved else "block",
                 f"{'Approved' if approved else 'Denied'} by human. Guardian said: {decision.reason}",
                 "human",
-                tier,
+                decision.tier,
                 escalated=True,
                 raw=decision.raw,
             )
         return decision, ctx
-
-    def _audit(self, outcome: ToolOutcome, ctx: dict | None):
-        d = outcome.decision
-        record = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "run_id": self.run_id,
-            "prompt_version": PROMPT_VERSION,
-            "task": self.task,
-            "tool": outcome.tool,
-            "args": _short_args(outcome.args),
-            "path": ctx["metadata"]["path"] if ctx else None,
-            "discovered_via": ctx["sighting"].describe() if ctx else None,
-            "tier": d.tier,
-            "judged": outcome.judged,
-            "executed": d.approved,
-            "layer": d.layer,
-            "reason": d.reason,
-            "raw_llm": d.raw,
-        }
-        with open(self.audit_path, "a", encoding="utf-8") as fh:
-            fh.write(json.dumps(record) + "\n")
-
-
-def _short_args(args: dict) -> dict:
-    """Args for logs: long write content replaced by its length."""
-    return {
-        k: (f"<{len(v)} chars>" if k == "new_content" and isinstance(v, str) else v)
-        for k, v in args.items()
-    }

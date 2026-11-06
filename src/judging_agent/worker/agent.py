@@ -1,5 +1,5 @@
 """
-worker.py — the Worker agent.
+worker/agent.py — the Worker agent.
 
 The Worker receives a task and drives itself to completion using Drive tools.
 It calls the watsonx.ai chat API with tool_choice="auto" and loops until the
@@ -12,9 +12,9 @@ come back as an error result the model can see and react to.
 
 import json
 
-from gateway import ToolGateway
-from tools import TOOL_SCHEMAS
-from watsonx_client import worker_model
+from judging_agent.guardian.gateway import ToolGateway
+from judging_agent.llm import worker_model
+from judging_agent.tools import TOOL_SCHEMAS
 
 _SYSTEM_PROMPT = (
     "You are a helpful assistant with access to Google Drive tools. "

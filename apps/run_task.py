@@ -1,30 +1,24 @@
 """
-main.py — entry point.
+apps/run_task.py — run one task with the Worker and the Guardian on your real Drive.
 
 Usage:
-    python main.py
+    python apps/run_task.py
 
 Before running:
   1. Copy .env.example to .env and fill in your watsonx.ai credentials.
-  2. Put credentials.json in credentials/ and run `python tools.py` once
-     to generate token.json for Google Drive OAuth.
+  2. Put credentials.json in credentials/ and run
+     `python -m judging_agent.drive.google` once to create token.json.
   3. Edit TASK below for your specific run.
 
 There is no hand-written allowlist: the Guardian derives a scope from TASK
 before the worker starts, and judges each call against it.
 """
 
-import os
-
-from dotenv import load_dotenv
-
-load_dotenv()
-
-from gateway import ToolGateway
-from judge import LLMJudge, console_escalation, derive_scope
-from tools import GoogleDrive
-from watsonx_client import guardian_model
-from worker import Worker
+from judging_agent.config import settings
+from judging_agent.drive import GoogleDrive
+from judging_agent.guardian import LLMJudge, ToolGateway, console_escalation, derive_scope
+from judging_agent.llm import guardian_model
+from judging_agent.worker import Worker
 
 # ── Define the task ───────────────────────────────────────────────────────────
 # This is the only source of truth for what the worker is allowed to do.
@@ -51,7 +45,7 @@ def main():
     print(f"  Scope : {scope.to_dict()}")
     print("=" * 60)
 
-    audit_path = os.environ.get("AUDIT_LOG_PATH", "audit.jsonl")
+    audit_path = settings().audit_path
     gateway = ToolGateway(
         task=TASK,
         scope=scope,
@@ -67,7 +61,7 @@ def main():
     print("=" * 60)
     print(gateway.summary())
     print("=" * 60)
-    print(f"\n  Audit log written to: {os.path.abspath(audit_path)}")
+    print(f"\n  Audit log written to: {audit_path.resolve()}")
 
 
 if __name__ == "__main__":

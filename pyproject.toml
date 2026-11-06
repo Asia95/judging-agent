@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "judging-agent"
+version = "0.1.0"
+description = "A Worker LLM uses Google Drive tools; a Guardian checks every tool call before it runs."
+requires-python = ">=3.11"
+dependencies = [
+    "ibm-watsonx-ai>=1.1.0",
+    "google-api-python-client>=2.130.0",
+    "google-auth-httplib2>=0.2.0",
+    "google-auth-oauthlib>=1.2.0",
+    "python-dotenv>=1.0.0",
+    "pypdf>=4.0.0",
+    "python-docx>=1.1.0",
+    "openpyxl>=3.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "fpdf2>=2.7.0",     # only for generating the golden-drive PDFs
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]      # so tests can import the evals package
