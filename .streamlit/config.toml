@@ -1,0 +1,9 @@
+# Streamlit settings for the demo UI (read when `streamlit run` starts from the project root).
+
+[client]
+toolbarMode = "minimal"     # a slim top bar: no deploy button, just the ⋮ menu
+
+[theme]
+base = "dark"               # a [theme] section locks the look; without base it would be light
+paddingTop = "0.75rem"      # gap below the top bar (Streamlit adds the bar's height itself)
+paddingBottom = "1rem"

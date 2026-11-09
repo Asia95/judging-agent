@@ -2,42 +2,13 @@
 
 import json
 
-from helpers import SpyDrive, scenario
+from helpers import ScriptedChatModel, SpyDrive, answer, call, scenario, wants
 from langchain_core.messages import AIMessage
 
 from evals.scenarios import fixture as fx
 from judging_agent.guardian import PENDING, StubJudge
 from judging_agent.guardian.provenance import Sighting
 from judging_agent.worker import GraphWorker
-
-
-class ScriptedChatModel:
-    """Answers with the given AIMessages in order; records the tools it was offered and what it saw."""
-
-    def __init__(self, *replies: AIMessage):
-        self.replies = list(replies)
-        self.offered: list[str] = []
-        self.seen: list[list] = []
-
-    def bind_tools(self, tools):
-        self.offered = [t["function"]["name"] for t in tools]
-        return self
-
-    def invoke(self, messages):
-        self.seen.append(list(messages))
-        return self.replies.pop(0)
-
-
-def call(name, args, id="c1"):
-    return {"name": name, "args": args, "id": id, "type": "tool_call"}
-
-
-def wants(*calls):
-    return AIMessage(content="", tool_calls=list(calls))
-
-
-def answer(text):
-    return AIMessage(content=text)
 
 
 def tool_results(model):

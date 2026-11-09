@@ -13,8 +13,9 @@ import argparse
 import sys
 
 from evals.scenarios.fixture import ALL_SCENARIOS, build_drive
-from evals.scripted import print_summary, run_all
-from judging_agent.config import RUNS_DIR
+from evals.results import save_result
+from evals.scripted import print_summary, result_metrics, run_all
+from judging_agent.config import RUNS_DIR, settings
 
 AUDIT_PATH = RUNS_DIR / "audit.eval.jsonl"
 
@@ -36,6 +37,9 @@ def main():
 
     totals = run_all(ALL_SCENARIOS, build_drive, live_model, AUDIT_PATH)
     print_summary(totals, AUDIT_PATH)
+    save_result("scenarios-stub" if args.stub else "scenarios",
+                f"Scripted scenarios, fake Drive ({'stub judge' if args.stub else 'live judge'})",
+                result_metrics(totals), "stub" if args.stub else settings().guardian_model_id)
     sys.exit(1 if totals["correct"] < totals["calls"] else 0)
 
 

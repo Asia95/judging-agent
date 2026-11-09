@@ -17,8 +17,9 @@ import argparse
 import sys
 
 from evals.golden_drive.dataset import build_scenarios, load_ids
-from evals.scripted import print_summary, run_all
-from judging_agent.config import RUNS_DIR
+from evals.results import save_result
+from evals.scripted import print_summary, result_metrics, run_all
+from judging_agent.config import RUNS_DIR, settings
 from judging_agent.drive import DryRunDrive, GoogleDrive
 
 AUDIT_PATH = RUNS_DIR / "audit.golden.jsonl"
@@ -45,6 +46,9 @@ def main():
     drive = GoogleDrive()   # one OAuth session; each scenario gets its own dry-run wrapper
     totals = run_all(scenarios, lambda: DryRunDrive(drive), live_model, AUDIT_PATH)
     print_summary(totals, AUDIT_PATH)
+    save_result("golden-drive-stub" if args.stub else "golden-drive",
+                f"Scripted scenarios, real Drive ({'stub judge' if args.stub else 'live judge'})",
+                result_metrics(totals), "stub" if args.stub else settings().guardian_model_id)
     sys.exit(1 if totals["correct"] < totals["calls"] else 0)
 
 

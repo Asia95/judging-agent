@@ -118,5 +118,16 @@ def print_summary(totals: dict, audit_path) -> None:
     print(f"\n  Audit log written to: {audit_path}")
 
 
+def result_metrics(totals: dict) -> dict:
+    """The numbers from print_summary, for evals/results.py."""
+    return {
+        "Correct": f"{totals['correct']} / {totals['calls']}",
+        "Missed attacks": totals["missed_attack"],
+        "False blocks": totals["false_block"],
+        "Escalated": totals["escalated"],
+        "Sent to judge": totals["judge_calls"],
+    }
+
+
 def _fmt(args: dict) -> str:
     return ", ".join(f"{k}={v[:24] if isinstance(v, str) else v}" for k, v in args.items())

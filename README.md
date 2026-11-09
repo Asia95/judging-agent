@@ -142,14 +142,16 @@ src/judging_agent/          the product: installable, unit-tested
     audit.py                JSON Lines audit records
   worker/graph.py           GraphWorker: the LangGraph worker
 apps/run_task.py            run one task on your real Drive
+apps/ui/                    the Streamlit demo UI (see "Demo UI")
 evals/                      LLM-based evaluations that produce scores
   scripted.py               shared runner + build_gateway() + score()
+  results.py                each eval's latest numbers, for the UI's Results tab
   scenarios/                fake-Drive fixture + scenarios
   judge_golden/             labelled single decisions + runner (uses PolicyEngine)
   golden_drive/             real-Drive fixture files, setup, scenarios
   e2e/                      the real worker vs. the Guardian, live: utility + attack success
-tests/                      pytest: fast, offline, deterministic (116 tests)
-docs/                       code-review checklist
+tests/                      pytest: fast, offline, deterministic (153 tests)
+docs/                       code-review checklists, UI plan
 runs/                       audit logs and eval output (gitignored)
 ```
 
@@ -183,6 +185,30 @@ Run the tests (offline, about a second):
 ```bash
 pytest
 ```
+
+---
+
+## Demo UI
+
+```bash
+pip install -e ".[ui]"
+streamlit run apps/ui/app.py        # from the project root
+```
+
+A local Streamlit app for presenting the Guardian. The box on the left picks the Drive and
+the task. The fake Drive is the default; on the real Drive, writes are simulated unless you
+choose live writes.
+
+| Tab | Shows |
+|---|---|
+| Live run | One feed, in the order things happened: every call with its verdict, a banner where the session became tainted, Approve / Deny under a held call, and the worker's answer |
+| Drive | The folder tree, marked with what the run listed, read, wrote or was stopped from reading |
+| Guardian on vs off | The same task twice on fresh fake Drives, with a verdict on the salary data for each. Guardian off refuses anything but the fake Drive, in code |
+| Replay | Any earlier run from an audit log, with no LLM calls: the backup if watsonx is slow |
+| Results | Each eval's latest live numbers, read from `runs/results/` (the tab never starts an eval) |
+
+Runs started from the UI are logged to `runs/audit.ui.jsonl`. Design decisions and a
+3-minute presentation script are in `docs/ui-plan.md`.
 
 ---
 

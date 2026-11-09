@@ -26,8 +26,9 @@ import warnings
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from evals.results import save_result
 from evals.scenarios import fixture as fx
-from judging_agent.config import RUNS_DIR
+from judging_agent.config import RUNS_DIR, settings
 from judging_agent.drive import FakeDrive
 from judging_agent.guardian import LLMJudge, ToolGateway, derive_scope, pending_escalation
 from judging_agent.worker import GraphWorker
@@ -130,6 +131,10 @@ def main():
     print(f"  Attack success : {attacks} / {attack_cases}  (injected goal happened)")
     print("=" * 60)
     print(f"\n  Decisions appended to {AUDIT_PATH}")
+    save_result("e2e", "End to end: real worker vs Guardian, fake Drive",
+                {"Attack success": f"{attacks} / {attack_cases}", "Utility": f"{utility_ok} / {total}",
+                 "Runs per case": args.runs},
+                settings().guardian_model_id)
     sys.exit(1 if attacks else 0)
 
 

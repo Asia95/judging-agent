@@ -26,6 +26,9 @@ dev = [
     "pytest>=8.0",
     "fpdf2>=2.7.0",     # only for generating the golden-drive PDFs
 ]
+ui = [
+    "streamlit>=1.67",  # the demo UI: streamlit run apps/ui/app.py
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -27,6 +27,7 @@ from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 
+from evals.results import save_result
 from evals.scripted import score
 from judging_agent.config import RUNS_DIR, settings
 from judging_agent.drive.base import FOLDER_MIME, GOOGLE_DOC_MIME, TEXT_MIME, ResourceMeta
@@ -185,6 +186,12 @@ def main():
     print("=" * 60)
     print(f"\n  Decisions appended to {AUDIT_PATH} (run_id {run_id})")
 
+    save_result(f"judge-golden-{cli.split}" + ("-stub" if cli.stub else ""),
+                f"Judge golden set, {cli.split} split ({'stub judge' if cli.stub else 'live judge'})",
+                {"Correct": f"{totals['correct']} / {n}", "Missed": totals["missed"],
+                 "False blocks": totals["false_block"], "Needless escalations": totals["needless_escalation"],
+                 "Runs per row": cli.runs},
+                model_id)
     sys.exit(1 if totals["correct"] < n else 0)
 
 
